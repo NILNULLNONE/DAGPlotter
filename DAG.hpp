@@ -32,6 +32,7 @@ private:
     void SplitDAG(const NodeArray& InNodes, DAGArray& OutDAGs) const;
     bool GetEntries(const NodeArray& InNodes, NodeArray& OutEntries) const;
     bool CheckDAG(const NodeArray& InEntries) const;
+    bool CheckDAGHelper(CDAGNode* InNode, NodeSet& VisitedNodes, NodeSet& Ancestors) const;
     void BuildCoordX(const NodeArray& InEntries) const;
     int BuildCoordY(const NodeArray& InEntries, const int RowStartIndex) const;
     int BuildCoordYHelper(CDAGNode* InNode)const;
@@ -91,6 +92,7 @@ void CDAG::SplitDAG(const NodeArray &InNodes, DAGArray &OutDAGs) const
         while(!BFSQueue.empty())
         {
             auto Front = BFSQueue.front();
+            BFSQueue.pop();
             Front->QueryChildren(OutChildrens);
             Front->QueryParents(OutParents);
             for(auto& Child : OutChildrens)
@@ -99,7 +101,7 @@ void CDAG::SplitDAG(const NodeArray &InNodes, DAGArray &OutDAGs) const
                 if(std::find(VisitedNodes.begin(), VisitedNodes.end(), Child) != VisitedNodes.end())continue;
                 VisitedNodes.insert(Child);
                 BFSQueue.push(Child);
-                DAG.push_back(Node);
+                DAG.push_back(Child);
             }
             for(auto& Parent : OutParents)
             {
@@ -107,7 +109,7 @@ void CDAG::SplitDAG(const NodeArray &InNodes, DAGArray &OutDAGs) const
                 if(std::find(VisitedNodes.begin(), VisitedNodes.end(), Parent) != VisitedNodes.end())continue;
                 VisitedNodes.insert(Parent);
                 BFSQueue.push(Parent);
-                DAG.push_back(Node);
+                DAG.push_back(Parent);
             }
         }
         OutDAGs.push_back(std::move(DAG));
@@ -129,44 +131,45 @@ bool CDAG::GetEntries(const NodeArray &InNodes, NodeArray &OutEntries) const
             continue;
         }
         // parent can't be self
-        const auto& Found = std::find(InNodes.begin(), InNodes.end(), Node);
-        if(Found != InNodes.end())
+        const auto& Found = std::find(OutParents.begin(), OutParents.end(), Node);
+        if(Found != OutParents.end())
         {
             return false;
         }
     }
+    return true;
 }
 
 bool CDAG::CheckDAG(const NodeArray &InEntries) const
 {
-    NodeSet VisitedNodes = {};
-    NodeQueue BFSQueue = {};
-    for(auto Entry : InEntries)
+    NodeSet VisitedNodes{}, Ancestors{};
+    for(auto& Entry : InEntries)
     {
-        assert(Entry);
-        BFSQueue.push(Entry);
-        VisitedNodes.insert(Entry);
+        if(!CheckDAGHelper(Entry, VisitedNodes, Ancestors))return false;
     }
-    NodeArray OutChildren = {};
-    while (!BFSQueue.empty())
+    return true;
+}
+
+bool CDAG::CheckDAGHelper(CDAGNode* InNode, NodeSet& VisitedNodes, NodeSet& Ancestors) const
+{
+    assert(InNode);
+    if(std::find(Ancestors.begin(), Ancestors.end(), InNode) != Ancestors.end())return false;
+    if(std::find(VisitedNodes.begin(), VisitedNodes.end(), InNode) != VisitedNodes.end())
     {
-        OutChildren.clear();
-        auto Front = BFSQueue.front();
-        assert(Front);
-        BFSQueue.pop();
-        Front->QueryChildren(OutChildren);
-        if(OutChildren.empty())continue;
-        for(auto& Child : OutChildren)
+        return true;
+    }
+    VisitedNodes.insert(InNode);
+    Ancestors.insert(InNode);
+    NodeArray Children = {};
+    InNode->QueryChildren(Children);
+    for(auto& Child : Children)
+    {
+        if(!CheckDAGHelper(Child, VisitedNodes, Ancestors))
         {
-            // has cycle
-            if(std::find(VisitedNodes.begin(), VisitedNodes.end(), Child) != VisitedNodes.end())
-            {
-                return false;
-            }
-            VisitedNodes.insert(Child);
-            BFSQueue.push(Child);
+            return false;
         }
     }
+    Ancestors.erase(InNode);
     return true;
 }
 
@@ -185,6 +188,7 @@ void CDAG::BuildCoordX(const NodeArray &InEntries) const
     {
         OutChildren.clear();
         auto Front = BFSQueue.front();
+        BFSQueue.pop();
         assert(Front);
         Front->QueryChildren(OutChildren);
         if(OutChildren.empty())continue;
@@ -193,7 +197,7 @@ void CDAG::BuildCoordX(const NodeArray &InEntries) const
         {
             assert(Child);
             auto ChildCoordX = Child->Coord.first;
-            auto NewCoordX = ParentCoordX;
+            auto NewCoordX = ParentCoordX + 1;
             if(NewCoordX > ChildCoordX)
             {
                 Child->Coord.first = NewCoordX;
