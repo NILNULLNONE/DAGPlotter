@@ -20,6 +20,7 @@ SOURCES += \
     mainwindow.cpp
 
 HEADERS += \
+    DAG.hpp \
     mainwindow.h
 
 # Default rules for deployment.
